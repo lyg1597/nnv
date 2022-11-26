@@ -18,17 +18,17 @@ def vehicle_dynamics(t, vars, args):
     bx = args[2]
     by = args[3]
 
-    if vr > 100:
-        vr_sat = 100
+    if vr > 10:
+        vr_sat = 10
     elif vr < -0:
         vr_sat = -0
     else:
         vr_sat = vr
 
-    if delta > np.pi / 3:
-        delta_sat = np.pi / 3
-    elif delta < -np.pi / 3:
-        delta_sat = -np.pi / 3
+    if delta > np.pi / 8:
+        delta_sat = np.pi / 8
+    elif delta < -np.pi / 8:
+        delta_sat = -np.pi / 8
     else:
         delta_sat = delta
 
@@ -71,6 +71,42 @@ class CarAgent(BaseAgent):
 from verse.analysis.verifier import Verifier
 from verse.analysis.analysis_tree import AnalysisTreeNode
 
+def bloatCos(li, ui):
+    lqout, lrem = np.divmod(li, np.pi)
+    uqout, urem = np.divmod(ui, np.pi)
+    if lqout == uqout:
+        lo = min(np.cos(li), np.cos(ui))
+        uo = max(np.cos(li), np.cos(ui))
+    elif lqout == uqout-1:
+        if lqout%2==0:
+            lo = -1
+            uo = max(np.cos(li), np.cos(ui))
+        else:
+            lo = min(np.cos(li), np.cos(ui))
+            uo = 1
+    else:
+        lo = -1
+        uo = 1
+    return lo, uo 
+
+def bloatSin(li, ui):
+    lqout, lrem = np.divmod(li+np.pi/2, np.pi)
+    uqout, urem = np.divmod(ui+np.pi/2, np.pi)
+    if lqout == uqout:
+        lo = min(np.sin(li), np.sin(ui))
+        uo = max(np.sin(li), np.sin(ui))
+    elif lqout == uqout-1:
+        if lqout%2==0:
+            lo = min(np.sin(li), np.sin(ui))
+            uo = 1
+        else:
+            lo = -1
+            uo = max(np.sin(li), np.sin(ui))
+    else:
+        lo = -1
+        uo = 1
+    return lo, uo 
+
 def verifyOneStep(init, v_ref, verify_step, simulate_step):
     '''
         init: [lb, ub] where lb = ub = [x_ref, y_ref, theta_ref, x, y, theta] initial state of the vehicle
@@ -84,9 +120,12 @@ def verifyOneStep(init, v_ref, verify_step, simulate_step):
     error_y_u = state_ub[1] - state_lb[4]
     error_theta_l = state_lb[2] - state_ub[5]
     error_theta_u = state_ub[2] - state_lb[5]
+    error_theta_cos_l, error_theta_cos_u = bloatCos(error_theta_l, error_theta_u)
+    error_theta_sin_l, error_theta_sin_u = bloatSin(error_theta_l, error_theta_u)
 
-    lb = matlab.double([[error_x_l], [error_y_l], [np.cos(error_theta_l)], [np.sin(error_theta_l)]])
-    ub = matlab.double([[error_x_u], [error_y_u], [np.cos(error_theta_u)], [np.sin(error_theta_u)]])
+
+    lb = matlab.double([[error_x_l], [error_y_l], [error_theta_cos_l], [error_theta_sin_l]])
+    ub = matlab.double([[error_x_u], [error_y_u], [error_theta_cos_u], [error_theta_sin_u]])
     res = eng.verifyCarNN(lb, ub)
 
     node = AnalysisTreeNode(
@@ -157,7 +196,7 @@ if __name__ == "__main__":
     end_point = [0,10]
     start_orientation = np.arctan2(end_point[1]-start_point[1], end_point[0]-start_point[0])
     total_time_span = 10
-    time_span = 1
+    time_span = 0.5
     assert time_span <= total_time_span
     vx = (end_point[0] - start_point[0])/total_time_span
     vy = (end_point[1] - start_point[1])/total_time_span
@@ -171,20 +210,24 @@ if __name__ == "__main__":
     ref_x_init = start_point[0]
     ref_y_init = start_point[1]
     ref_theta_init = start_orientation
-    xl = 1
-    yl = -0.1
-    thetal = 0
+    xl = 1.4
+    yl = -1.0
+    thetal = np.pi/2
     xu = 1.5
-    yu = -0.0
-    thetau = 0
+    yu = -0.9
+    thetau = np.pi/2
     res_list = []
     for t in time_point:
+        # if t == 0.45:
+        #     print('stop here')
         res:AnalysisTreeNode = verifyOneStep(
             [[ref_x_init,ref_y_init,ref_theta_init,xl,yl,thetal],[ref_x_init,ref_y_init,ref_theta_init,xu,yu,thetau]],
             [vx,vy],
             large_time_step,
             small_time_step
         )
+        for i in range(len(res.trace['test'])):
+            res.trace['test'][i][0] += t
         res_list.append(res)
         ref_x_init = res.trace['test'][-1][1]
         ref_y_init = res.trace['test'][-1][2]
@@ -196,41 +239,62 @@ if __name__ == "__main__":
         yu = res.trace['test'][-1][5]
         thetau = res.trace['test'][-1][6]
 
-    from verse.plotter.plotter2D import *
-    import plotly.graph_objects as go
-    fig = go.Figure()
+    from verse.plotter.plotter2D_old import *
+    import matplotlib.pyplot as plt
+    fig1 = plt.figure()
+    fig2 = plt.figure()
+    fig3 = plt.figure()
     for node in res_list:
-        fig = reachtube_tree(node, None, fig, 4, 5)
-    fig.show()
+        fig1 = plot_reachtube_tree(node,'test',0,[4],'r',fig1)
+        fig2 = plot_reachtube_tree(node,'test',0,[5],'r',fig2)
 
-    ref_x_init = start_point[0]
-    ref_y_init = start_point[1]
-    ref_theta_init = start_orientation
-    xl = 1.5
-    yl = -0.0
-    thetal = 0
-    xu = 1.5
-    yu = -0.0
-    thetau = 0
-    res_list = []
-    for t in time_point:
-        res:AnalysisTreeNode = simulateOneStep(
-            [ref_x_init,ref_y_init,ref_theta_init,xl,yl,thetal],
-            [vx,vy],
-            large_time_step,
-            small_time_step
-        )
-        res_list.append(res)
-        ref_x_init = res.trace['test'][-1][1]
-        ref_y_init = res.trace['test'][-1][2]
-        ref_theta_init = res.trace['test'][-1][3]
-        xl = res.trace['test'][-1][4]
-        yl = res.trace['test'][-1][5]
-        thetal = res.trace['test'][-1][6]
+    for j in range(10):
+        ref_x_init = start_point[0]
+        ref_y_init = start_point[1]
+        ref_theta_init = start_orientation
+        xl = 1.4
+        yl = -1.0
+        thetal = np.pi/2
+        xu = 1.5
+        yu = -0.9
+        thetau = np.pi/2
+        x = np.random.uniform(xl,xu)
+        y = np.random.uniform(yl,yu)
+        theta = np.random.uniform(thetal,thetau)
+        res_list = []
+        for t in time_point:
+            # if t == 0.45:
+            #     print('stop here')
+            res:AnalysisTreeNode = simulateOneStep(
+                [ref_x_init,ref_y_init,ref_theta_init,x,y,theta],
+                [vx,vy],
+                large_time_step,
+                small_time_step
+            )
+            for i in range(len(res.trace['test'])):
+                res.trace['test'][i][0] += t
+            res_list.append(res)
+            ref_x_init = res.trace['test'][-1][1]
+            ref_y_init = res.trace['test'][-1][2]
+            ref_theta_init = res.trace['test'][-1][3]
+            x = res.trace['test'][-1][4]
+            y = res.trace['test'][-1][5]
+            theta = res.trace['test'][-1][6]
 
-    from verse.plotter.plotter2D import *
-    import plotly.graph_objects as go
-    fig = go.Figure()
-    for node in res_list:
-        fig = simulation_tree(node, None, fig, 4, 5)
-    fig.show()
+        # from verse.plotter.plotter2D_old import *
+        # import plotly.graph_objects as go
+        for node in res_list:
+            fig1 = plot_simulation_tree(node,'test',0,[4],'b',fig1,[-0.1,0.6],[-10,10])
+            fig2 = plot_simulation_tree(node,'test',0,[5],'b',fig2,[-0.1,0.6],[-4,4])
+            fig3 = plot_simulation_tree(node,'test',4,[5],'b',fig3,[-3,3],[-1,5])
+    ax1 = fig1.gca()
+    ax1.set_xlim([-0.1,0.6])
+    ax1.set_ylim([-10,10])
+    ax2 = fig2.gca()
+    ax2.set_xlim([-0.1,0.6])
+    ax2.set_ylim([-4,10])
+    ax3 = fig3.gca()
+    ax3.plot([0,0],[10,0],'g')
+    ax3.set_xlim([-3,3])
+    ax3.set_ylim([-2,12])
+    plt.show()
