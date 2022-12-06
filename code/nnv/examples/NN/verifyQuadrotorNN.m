@@ -86,8 +86,8 @@ F = FFNNS([L1, L2, L3]);
 % ub = [0.3;0.3;0.3;0;0;0];
 
 I = Star(lb, ub);
-R = F.reach(I, 'approx-star');
+R = F.reach(I, 'approx-zono');
 
-B = R.getBox;
+B = R.getBox();
 res = [B.lb, B.ub];
 end
