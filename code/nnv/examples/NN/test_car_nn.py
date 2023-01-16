@@ -270,7 +270,7 @@ if __name__ == "__main__":
     end_point = [0,10]
     start_orientation = np.arctan2(end_point[1]-start_point[1], end_point[0]-start_point[0])
     total_time_span = 5
-    time_span = 1.0
+    time_span = 0.5
 
     xl_init = 1.4
     yl_init = -1.0

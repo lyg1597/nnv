@@ -335,7 +335,7 @@ if __name__ == "__main__":
     start_point = [48.742640687118424, 79.98528137424009, 0]
     end_point = [53.74264068711783, 79.98528137424009, 3]
     total_time_span = 10
-    time_span = 4.0
+    time_span = 7.0
 
     xl_init = 48.49264
     yl_init = 79.79663
